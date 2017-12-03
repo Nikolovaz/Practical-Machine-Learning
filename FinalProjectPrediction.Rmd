@@ -1,0 +1,134 @@
+---
+title: "Machine Learning Project"
+author: Zdravka Nikolova
+output: html_document
+---
+
+# Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website [here](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har)(see the section on the Weight Lifting Exercise Dataset). 
+
+
+# Data
+
+The training data for this project are available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+The test data are available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+The original data for this project come from [this source](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har)
+
+# The goal of the this project
+The goal of the project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. You may use any of the other variables to predict with. It should be created a report describing how you built your model, how the cross validation is used, what the expected out of sample error is, and why this choice is made. Finally the prediction model is used to predict 20 different test cases.
+
+- The submission should consist of a link to a Github repo with R markdown and compiled HTML      file describing the analysis. 
+- The machine learning algorithm should be also applied to the 20 test cases available in the test data above.
+
+## 1. Load the data set and learn the characteristics of the data.
+
+
+```{r, echo = TRUE}
+data <- read.csv("/Users/petya/Desktop/Data_science/JH_university_course/8_PracticalMachineLearning/week4/FinalProject/Data/pml-training.csv")
+```
+
+```{r, echo = TRUE, include=FALSE}
+colnames(data)
+summary(data)
+```
+
+## 2. Cross-validation
+Partition the data set in training set (70% of the data) and test set (30% of the data).
+
+```{r, echo = TRUE}
+library(caret)
+library(ggplot2)
+library(lattice)
+
+```
+
+```{r, echo = TRUE}
+set.seed(1111)
+train <- createDataPartition(y=data$classe,p=.70,list=F)
+training <- data[train,]
+testing <- data[-train,]
+```
+
+## 3. Cleaning the training data
+
+
+```{r, echo = TRUE}
+#exclude identifier, timestamp, and window data (they cannot be used for prediction)
+cleanData <- grep("name|timestamp|window|X", colnames(training), value=F) 
+trainingClean <- training[,-cleanData]
+#select variables with high (over 95%) missing data --> exclude them from the analysis
+trainingClean[trainingClean==""] <- NA
+NArate <- apply(trainingClean, 2, function(x) sum(is.na(x)))/nrow(trainingClean)
+trainingClean <- trainingClean[!(NArate>0.95)]
+
+```
+
+```{r, echo = TRUE,include=FALSE}
+summary(trainingClean)
+```
+
+## 4. PCA 
+The number of variables are still over 50, thus PCA is applied
+
+```{r, echo = TRUE}
+preProc <- preProcess(trainingClean[,1:52],method="pca",thresh=.8) #12 components are required
+preProc <- preProcess(trainingClean[,1:52],method="pca",thresh=.9) #18 components are required
+preProc <- preProcess(trainingClean[,1:52],method="pca",thresh=.95) #25 components are required
+
+preProc <- preProcess(trainingClean[,1:52],method="pca",pcaComp=25) 
+preProc$rotation
+trainingPC <- predict(preProc,trainingClean[,1:52])
+```
+
+
+## 5. Random Forest
+I apply the random forest classification algorithm because there are high number of predictive variables, non-bionominal outcome and large sample size. This machine learning algorithm captures the variance of sevaral input variables at the same time and enables high number of observations to participate in the prediction. Finally, Random forest gives much more accurate predictions when compared to simple CART/CHAID or regression models in many scenarios. 
+
+
+```{r, echo = TRUE}
+library(randomForest)
+```
+
+```{r, echo = TRUE}
+modFitRF <- randomForest(trainingClean$classe ~ .,   data=trainingPC, do.trace=F)
+print(modFitRF) # view results 
+```
+
+```{r, echo = TRUE}
+importance(modFitRF) # importance of each predictor
+```
+## 6. Control the accuracy of the model with the test set
+
+
+```{r, echo = TRUE}
+testingClean <- testing[,-cleanData]
+#select variables with high (over 95%) missing data --> exclude them from the analysis
+testingClean[testingClean==""] <- NA
+NArate <- apply(testingClean, 2, function(x) sum(is.na(x)))/nrow(testingClean)
+testingClean <- testingClean[!(NArate>0.95)]
+testingPC <- predict(preProc,testingClean[,1:52])
+confusionMatrix(testingClean$classe,predict(modFitRF,testingPC))
+```
+
+## 7. Prediction
+I predict classes of 20 test data
+
+
+```{r, echo = TRUE}
+testdata <- read.csv("/Users/petya/Desktop/Data_science/JH_university_course/8_PracticalMachineLearning/week4/FinalProject/Data/pml-testing.csv")
+testdataClean <- testdata[,-cleanData]
+testdataClean[testdataClean==""] <- NA
+NArate <- apply(testdataClean, 2, function(x) sum(is.na(x)))/nrow(testdataClean)
+testdataClean <- testdataClean[!(NArate>0.95)]
+testdataPC <- predict(preProc,testdataClean[,1:52])
+testdataClean$classe <- predict(modFitRF,testdataPC)
+```
+
+## 8. Final Analysis
+
+In this analysis I apply the random forest classification algorithm because there are high number of predictive variables, non-bionominal outcome and large sample size. This machine learning algorithm captures the variance of sevaral input variables at the same time and enables high number of observations to participate in the prediction. Finally, Random forest gives much more accurate predictions when compared to simple CART/CHAID or regression models in many scenarios. Overrall, 19622 observations from weight lifting exercise were used to analyze and predict correct body movement from others during the exercise. The data set was partitioned into a training set (70% of the observations) on which the modle was build. The remainig 30% of the observations were used for model validation. The overall accuracy of the model was 97% for the test set. In addition the sensitivity was between 92%-99%, and the specificity was over 99% for all 5 classes(from A to E). Based on the results I can conclude  the model is well developed to predict the exercise classes during weight lifting. However, there is an additional point to be concidered. For instance, the observations in the data set were collected form mainly young participants in an experiment. Thus, under these conditions the model is expected to perform with 97% accuracy. However, it cannot be claimed that the accuracy will be preserved if the same experiment is applied on elder people and using different devices. 
+
+
+
